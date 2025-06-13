@@ -55,7 +55,7 @@ For Windows:
 curl -L https://raw.githubusercontent.com/NammIsADev/glautude/main/windows/windows.cmd -o windows.cmd
 windows.cmd
 ```
-For Linux:
+For Linux (Ubuntu/Debian or any apt-based distro):
 ```bash
 curl -L https://raw.githubusercontent.com/NammIsADev/glautude/main/linux/linux.sh -o linux.sh && chmod +x linux.sh && ./linux.sh
 ```
