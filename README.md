@@ -125,7 +125,7 @@ ConPlayer offers a minimal set of controls typically through keyboard interactio
 
 ![image](https://github.com/user-attachments/assets/2213c848-d045-4ed0-b21f-1a4e4a54a389)
 
-*Glautude Windows playing LISA ft. Doja Cat & RAYE at 4K*
+*Glautude Windows playing LISA ft. Doja Cat & RAYE at 4K - Born Again*
 
 ---
 
