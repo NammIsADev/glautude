@@ -65,10 +65,10 @@ termux-setup-storage && curl -LJO https://raw.githubusercontent.com/NammIsADev/g
 ```
 
 ### Place the Script
-It's highly recommended to place the downloaded script in a dedicated, easy-to-access folder (e.g., Desktop on Windows, or ~/GlauTude/ on Linux/Termux). Avoid running the script directly from your temporary system folder (%TEMP% on Windows, or /tmp/ on Linux/Termux)
+It's highly recommended to place the downloaded script in a dedicated, easy-to-access folder (e.g., `Desktop` on Windows, or ~`/GlauTude/` on Linux/Termux). Avoid running the script directly from your temporary system folder (`%TEMP%` on Windows, or `/tmp/` on Linux/Termux)
 
 ### Run GlauTude
-The first time you run GlauTude, it will automatically detect and install all necessary dependencies (like yt-dlp, mpv/ConPlayer, ffmpeg, jq, etc.) into a bin/ subfolder within the script's directory. This process requires an active internet connection and may take a few moments.
+The first time you run GlauTude, it will automatically detect and install all necessary dependencies (like yt-dlp, mpv/ConPlayer, ffmpeg, jq, etc.) into a `bin` subfolder within the script's directory. This process requires an active internet connection and may take a few moments.
 
 ### Interactive Menu
 Once launched, GlauTude will present you with an interactive command-line menu:
