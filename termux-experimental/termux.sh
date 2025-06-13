@@ -70,7 +70,7 @@ function setup_dependencies() {
     # Create the local bin directory if it doesn't exist
     if [ ! -d "${BIN_DIR}" ]; then
         echo -e "${CYAN}[INFO] Creating local bin directory: ${BIN_DIR}${NC}" # Changed to CYAN
-        mkdir -p "${BIN_DIR}" || { echo -e "${RED}[ERROR] Failed to create ${BIN_DIR}. Check permissions.${NC}"; read -p "Press Enter to abort..."; exit 1; }
+        mkdir -p "${BIN_DIR}" || { echo -e "${RED}[ERROR] Failed to create ${BIN_DIR}. Check permissions.${NC}"; read -r -p "Press Enter to abort..."; exit 1; }
     fi
 
     local packages_to_install=()
@@ -85,7 +85,7 @@ function setup_dependencies() {
         echo -e "${CYAN}[INFO] Detected apt-based Linux. Using 'apt' for package management.${NC}"
     else
         echo -e "${RED}[ERROR] No supported package manager (pkg or apt) found. Please install mpv, ffmpeg, jq, curl, and libcaca manually.${NC}"
-        read -p "Press Enter to abort..."
+        read -r -p "Press Enter to abort..."
         exit 1
     fi
 
@@ -133,13 +133,13 @@ function setup_dependencies() {
         if [ "$PKG_MANAGER" = "pkg" ]; then
             if ! pkg update -y || ! pkg install -y "${packages_to_install[@]}"; then
                 echo -e "${RED}[ERROR] Failed to install one or more Termux dependencies. Please install them manually and try again.${NC}"
-                read -p "Press Enter to abort..."
+                read -r -p "Press Enter to abort..."
                 exit 1
             fi
         elif [ "$PKG_MANAGER" = "apt" ]; then
             if ! sudo apt update || ! sudo apt install -y "${packages_to_install[@]}"; then
                 echo -e "${RED}[ERROR] Failed to install one or more apt dependencies. Please install them manually and try again.${NC}"
-                read -p "Press Enter to abort..."
+                read -r -p "Press Enter to abort..."
                 exit 1
             fi
         fi
@@ -153,7 +153,7 @@ function setup_dependencies() {
     # Download directly to the calculated YTDLP_BIN path
     if ! curl -L "$YTDLP_LATEST_URL" -o "${YTDLP_BIN}" || ! chmod a+rx "${YTDLP_BIN}"; then
         echo -e "${RED}[ERROR] Failed to download or make yt-dlp executable to ${YTDLP_BIN}. Please check internet and permissions.${NC}"
-        read -p "Press Enter to abort..."
+        read -r -p "Press Enter to abort..."
         exit 1
     fi
 
@@ -204,7 +204,7 @@ function clear_all_temp() {
           "${TMPDIR:-/tmp}/yt_dlp_raw_output*" \
           2>/dev/null
     echo -e "${GREEN}Done.${NC}"
-    read -p "Press [Enter] to go back."
+    read -r -p "Press [Enter] to go back."
 }
 
 # Function to display available formats for a URL
@@ -329,7 +329,7 @@ function paste_url() {
     cleanup_temp
     echo -e "${GREEN}Done cleaning old video temp.${NC}"
     echo ""
-    read -p "Enter YouTube URL: " YOUTUBE_URL
+    read -r -p "Enter YouTube URL: " YOUTUBE_URL
 
     if [ -z "$YOUTUBE_URL" ]; then
         return
@@ -338,7 +338,7 @@ function paste_url() {
     show_formats "$YOUTUBE_URL"
 
     AUDIO_ONLY=""
-    read -p "Play audio only? (y/N): " AUDIO_CHOICE
+    read -r -p "Play audio only? (y/N): " AUDIO_CHOICE
     [[ "$AUDIO_CHOICE" =~ ^[Yy]$ ]] && AUDIO_ONLY="yes"
 
     VIDEO_QUALITY=""
@@ -346,7 +346,7 @@ function paste_url() {
 
     # Automatically set terminal video options if not playing audio only
     if [ -z "$AUDIO_ONLY" ]; then
-        read -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
+        read -r -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
 
         # Check for global override first (e.g., MPV_VO=caca)
         if [ -n "$GLOBAL_MPV_VO_OVERRIDE" ]; then
@@ -404,11 +404,11 @@ local FILE_TO_PLAY="$OUTPUT_PATH" # Default to the video path
         echo -e "-----------------------------------------------------"
         cleanup_temp
         echo -e "${GREEN}Done.${NC}"
-        read -p "Press Enter to continue..."
+        read -r -p "Press Enter to continue..."
     else
         echo -e "${RED}[ERR] Download or playback failed! The file '$FILE_TO_PLAY' was not found.${NC}" # More specific error message
         cleanup_temp
-        read -p "Press Enter to continue..."
+        read -r -p "Press Enter to continue..."
     fi
 } # Correct closing brace for paste_url function
 
@@ -419,7 +419,7 @@ function search_playback() {
     show_formats "$url_to_play"
 
     AUDIO_ONLY=""
-    read -p "Play audio only? (y/N): " AUDIO_CHOICE
+    read -r -p "Play audio only? (y/N): " AUDIO_CHOICE
     [[ "$AUDIO_CHOICE" =~ ^[Yy]$ ]] && AUDIO_ONLY="yes"
 
     VIDEO_QUALITY=""
@@ -427,7 +427,7 @@ function search_playback() {
 
     # Automatically set terminal video options if not playing audio only
     if [ -z "$AUDIO_ONLY" ]; then
-        read -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
+        read -r -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
 
         # Check for global override first (e.g., MPV_VO=caca)
         if [ -n "$GLOBAL_MPV_VO_OVERRIDE" ]; then
@@ -485,11 +485,11 @@ function search_playback() {
         echo -e "-----------------------------------------------------"
         cleanup_temp
         echo -e "${GREEN}Done.${NC}"
-        read -p "Press Enter to continue..."
+        read -r -p "Press Enter to continue..."
     else
         echo -e "${RED}[ERR] Download or playback failed! The file '$FILE_TO_PLAY' was not found.${NC}" # More specific error message
         cleanup_temp
-        read -p "Press Enter to continue..."
+        read -r -p "Press Enter to continue..."
     fi
 } # This closing brace is already there for search_playback
 
