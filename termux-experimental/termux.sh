@@ -1,15 +1,12 @@
 #!/bin/bash
 
 # Based on Linux version
-# Supported x86 termux variant
+# Supported x86/arm64 termux variant
 
 # Set terminal title
-echo -ne "\033]0;GLAUTUDE-Linux-1.0\007"
+echo -ne "\033]0;GLAUTUDE-Termux-1.0\007"
 
-echo "Running shell: $0"
-echo "Bash version: $BASH_VERSION"
-
-# GLAUTUDE-Linux-Prototype
+# GLAUTUDE-Termux-Prototype
 
 # --- Configuration ---
 SEARCH_RESULT_LIMIT=5
@@ -24,7 +21,7 @@ YTDLP_BIN="${BIN_DIR}/yt-dlp"
 # Other binaries (assume they are in system PATH or provide full path if not)
 MPV_BIN="mpv"
 JQ_BIN="jq"
-FFMPEG_BIN="ffmpeg"
+FFMPEG_BIN="ffmpeg" # FFMPEG_BIN will be found in PATH after setup_dependencies
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -77,54 +74,79 @@ function setup_dependencies() {
     fi
 
     local packages_to_install=()
+    local PKG_MANAGER=""
 
-    # --- Check for curl (needed for manual yt-dlp download) ---
+    # Detect package manager (pkg for Termux, apt for Debian/Ubuntu)
+    if command -v pkg &> /dev/null; then
+        PKG_MANAGER="pkg"
+        echo -e "${CYAN}[INFO] Detected Termux. Using 'pkg' for package management.${NC}"
+    elif command -v apt &> /dev/null; then
+        PKG_MANAGER="apt"
+        echo -e "${CYAN}[INFO] Detected apt-based Linux. Using 'apt' for package management.${NC}"
+    else
+        echo -e "${RED}[ERROR] No supported package manager (pkg or apt) found. Please install mpv, ffmpeg, jq, curl, and libcaca manually.${NC}"
+        read -p "Press Enter to abort..."
+        exit 1
+    fi
+
+    # --- Check for curl ---
     if ! command -v curl &> /dev/null; then
-        echo -e "${YELLOW}[INFO] curl not found. Installing...${NC}"
+        echo -e "${YELLOW}[INFO] curl not found. Will attempt to install...${NC}"
         packages_to_install+=("curl")
     fi
 
     # --- Check for mpv ---
     if ! command -v mpv &> /dev/null; then
-        echo -e "${YELLOW}[INFO] mpv not found. Installing...${NC}"
+        echo -e "${YELLOW}[INFO] mpv not found. Will attempt to install...${NC}"
         packages_to_install+=("mpv")
-    fi
-
-    # Check for libcaca (for ASCII/pixel art video in terminal)
-    if ! dpkg -s libcaca0 &> /dev/null; then # Check for the library package
-        echo -e "${YELLOW}[INFO] libcaca not found. Installing for terminal video output...${NC}"
-        packages_to_install+=("libcaca0")
-    fi
-
-    # --- Check for ffmpeg ---
-    if ! command -v ffmpeg &> /dev/null; then
-        echo -e "${YELLOW}[INFO] ffmpeg not found. Installing...${NC}"
-        packages_to_install+=("ffmpeg")
     fi
 
     # --- Check for jq ---
     if ! command -v jq &> /dev/null; then
-        echo -e "${YELLOW}[INFO] jq not found. Installing...${NC}"
+        echo -e "${YELLOW}[INFO] jq not found. Will attempt to install...${NC}"
         packages_to_install+=("jq")
     fi
 
-    # Install any missing packages using apt
+    # --- Check for ffmpeg ---
+    # Termux's ffmpeg usually includes required components
+    if ! command -v ffmpeg &> /dev/null; then
+        echo -e "${YELLOW}[INFO] ffmpeg not found. Will attempt to install...${NC}"
+        packages_to_install+=("ffmpeg") # Package name is same for both
+    fi
+
+    # --- Check for libcaca / caca (for ASCII/pixel art video in terminal) ---
+    if [ "$PKG_MANAGER" = "pkg" ]; then
+        if ! pkg list-installed caca &> /dev/null; then # Termux package name is usually just 'caca'
+            echo -e "${YELLOW}[INFO] caca not found. Will attempt to install for terminal video output...${NC}"
+            packages_to_install+=("caca")
+        fi
+    elif [ "$PKG_MANAGER" = "apt" ]; then
+        if ! dpkg -s libcaca0 &> /dev/null; then # Debian/Ubuntu library package
+            echo -e "${YELLOW}[INFO] libcaca0 not found. Will attempt to install for terminal video output...${NC}"
+            packages_to_install+=("libcaca0")
+        fi
+    fi
+
+    # Install any missing packages
     if [ ${#packages_to_install[@]} -gt 0 ]; then
-        if command -v apt &> /dev/null; then
-            echo -e "${CYAN}[INFO] Attempting to install: ${packages_to_install[*]}${NC}" # Changed to CYAN
-            if !  apt update || !  apt install -y "${packages_to_install[@]}"; then
+        echo -e "${CYAN}[INFO] Attempting to install: ${packages_to_install[*]}${NC}"
+        if [ "$PKG_MANAGER" = "pkg" ]; then
+            if ! pkg update -y || ! pkg install -y "${packages_to_install[@]}"; then
+                echo -e "${RED}[ERROR] Failed to install one or more Termux dependencies. Please install them manually and try again.${NC}"
+                read -p "Press Enter to abort..."
+                exit 1
+            fi
+        elif [ "$PKG_MANAGER" = "apt" ]; then
+            if ! sudo apt update || ! sudo apt install -y "${packages_to_install[@]}"; then
                 echo -e "${RED}[ERROR] Failed to install one or more apt dependencies. Please install them manually and try again.${NC}"
                 read -p "Press Enter to abort..."
                 exit 1
             fi
-        else
-            echo -e "${RED}[ERROR] apt package manager not found. Please install curl, mpv, ffmpeg, and jq manually.${NC}"
-            read -p "Press Enter to abort..."
-            exit 1
         fi
     fi
 
     # --- Download and install/update yt-dlp from GitHub to local bin ---
+    # This is kept as a local download to ensure the absolute latest version.
     echo -e "${CYAN}[INFO] Ensuring yt-dlp is the latest version from GitHub...${NC}" # Changed to CYAN
     local YTDLP_LATEST_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
 
@@ -145,15 +167,17 @@ function setup_dependencies() {
 # Function to clean up temporary files
 function cleanup_temp() {
     echo -e "${YELLOW}[INFO] Cleaning up temporary files...${NC}"
-    rm -f /tmp/yt_temp_play.mp4 \
-          /tmp/yt_temp_play.mp4.mp3 \
-          /tmp/yt_temp.mp4 \
-          /tmp/yt_temp.mp4.mp3 \
-          /tmp/yt_search.tmp \
-          /tmp/yt_selected_url.txt \
-          /tmp/yt_dlp_search_err.log \
-          /tmp/yt_dlp_formats_only* \
-          /tmp/yt_dlp_raw_output* \
+    # Use /tmp/ (or Termux's equivalent via TMPDIR) for generic temporary files
+    # Termux's default TMPDIR is typically /data/data/com.termux/files/usr/tmp or similar
+    rm -f "${TMPDIR:-/tmp}/yt_temp_play.mp4" \
+          "${TMPDIR:-/tmp}/yt_temp_play.mp4.mp3" \
+          "${TMPDIR:-/tmp}/yt_temp.mp4" \
+          "${TMPDIR:-/tmp}/yt_temp.mp4.mp3" \
+          "${TMPDIR:-/tmp}/yt_search.tmp" \
+          "${TMPDIR:-/tmp}/yt_selected_url.txt" \
+          "${TMPDIR:-/tmp}/yt_dlp_search_err.log" \
+          "${TMPDIR:-/tmp}/yt_dlp_formats_only*" \
+          "${TMPDIR:-/tmp}/yt_dlp_raw_output*" \
           2>/dev/null
     echo -e "${GREEN}Done.${NC}"
 }
@@ -164,19 +188,20 @@ function clear_all_temp() {
     # This is a very aggressive command and might affect other running programs.
     # Use with caution!
     rm -rf "$HOME/.cache/yt-dlp" 2>/dev/null
-    rm -rf /tmp/* 2>/dev/null # This might require root privileges for some files and is very aggressive
+    # Use TMPDIR for /tmp/ equivalent in Termux
+    rm -rf "${TMPDIR:-/tmp}/*" 2>/dev/null # This might require root privileges for some files and is very aggressive
 
     # If you remove /tmp/* above, these specific removals might be redundant,
     # but their syntax is now correct.
-    rm -f /tmp/yt_temp_play.mp4 \
-          /tmp/yt_temp_play.mp4.mp3 \
-          /tmp/yt_temp.mp4 \
-          /tmp/yt_temp.mp4.mp3 \
-          /tmp/yt_search.tmp \
-          /tmp/yt_selected_url.txt \
-          /tmp/yt_dlp_search_err.log \
-          /tmp/yt_dlp_formats_only* \
-          /tmp/yt_dlp_raw_output* \
+    rm -f "${TMPDIR:-/tmp}/yt_temp_play.mp4" \
+          "${TMPDIR:-/tmp}/yt_temp_play.mp4.mp3" \
+          "${TMPDIR:-/tmp}/yt_temp.mp4" \
+          "${TMPDIR:-/tmp}/yt_temp.mp4.mp3" \
+          "${TMPDIR:-/tmp}/yt_search.tmp" \
+          "${TMPDIR:-/tmp}/yt_selected_url.txt" \
+          "${TMPDIR:-/tmp}/yt_dlp_search_err.log" \
+          "${TMPDIR:-/tmp}/yt_dlp_formats_only*" \
+          "${TMPDIR:-/tmp}/yt_dlp_raw_output*" \
           2>/dev/null
     echo -e "${GREEN}Done.${NC}"
     read -p "Press [Enter] to go back."
@@ -187,6 +212,7 @@ function show_formats() {
     local url="$1"
     echo -e "${CYAN}[INFO] Fetching available formats...${NC}" # Changed to CYAN
 
+    # Use mktemp, which respects TMPDIR, so it's Termux-friendly
     local RAW_YTDLP_OUTPUT=$(mktemp) # File to capture all yt-dlp output
     local YTDLP_FORMATS_ONLY=$(mktemp) # File for only the format table
 
@@ -237,7 +263,7 @@ function show_formats() {
 function main_menu() {
     while true; do
         logo
-        echo "Version: 1.0-linux"
+        echo "Version: Termux-1.0" # Updated version string
         echo ""
         echo "[1] Play video/audio by YouTube URL"
         echo "[2] Search YouTube Video"
@@ -287,7 +313,7 @@ function search_video() {
                 return
             elif [[ -n "$RESULT" ]]; then
                 VIDEO_ID=$(echo "$RESULT" | cut -d" " -f1)
-                # CRITICAL FIX: Correct YouTube URL construction
+                # Correct YouTube URL construction
                 VIDEO_URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
                 search_playback "$VIDEO_URL"
                 break
@@ -350,7 +376,8 @@ function paste_url() {
         sleep 2 # Give user time to read the message
     fi
 
-    local OUTPUT_PATH="/tmp/yt_temp_play.mp4" # Or /tmp/yt_temp.mp4 for search_playback
+    # Use TMPDIR for Termux compatibility
+    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp_play.mp4"
     rm -f "$OUTPUT_PATH" 2>/dev/null
 
     echo -e "${CYAN}[INFO] Starting download...${NC}" # Changed to CYAN
@@ -430,7 +457,8 @@ function search_playback() {
         sleep 2 # Give user time to read the message
     fi
 
-    local OUTPUT_PATH="/tmp/yt_temp.mp4" # Different temp file for search_playback
+    # Use TMPDIR for Termux compatibility
+    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp.mp4" # Different temp file for search_playback
     rm -f "$OUTPUT_PATH" 2>/dev/null
 
     echo -e "${CYAN}[INFO] Starting download...${NC}" # Changed to CYAN
