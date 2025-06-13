@@ -56,9 +56,9 @@ function logo() {
     echo -e "-------------------------------------------------------------------"
     echo ""
     # The Sixel note, now formatted neatly within the logo function
-    echo -e "${YELLOW}    [!] For the best results with terminal pixel graphics,"
-    echo -e "        your terminal *must* support Sixel (e.g., foot, mlterm, Kitty,"
-    echo -e "        Alacritty configured with Sixel.).${NC}"
+    echo -e "${YELLOW}    [!] Note on Terminal Video Performance:"
+    echo -e "        Playing video directly in the terminal can be resource-intensive,"
+    echo -e "        particularly on mobile devices (Termux).${NC}"
     echo ""
     echo ""
 }
