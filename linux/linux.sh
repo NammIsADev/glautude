@@ -242,7 +242,7 @@ function main_menu() {
         echo "[4] Exit"
         echo ""
         echo -n "Select an option [1-4]: " # Prints the prompt without a newline
-        read MENU_CHOICE                   # Reads the user's input
+        read -r MENU_CHOICE                   # Reads the user's input
 
         case "$MENU_CHOICE" in
             1) paste_url ;;
@@ -264,7 +264,7 @@ function search_video() {
 
     while true; do
         echo -n "Enter search term for YouTube (leave blank to return to menu): "
-        read SEARCH_QUERY
+        read -r SEARCH_QUERY
         if [ -z "$SEARCH_QUERY" ]; then
             return # Go back to main menu if blank
         fi
