@@ -19,6 +19,9 @@
   <a href="https://github.com/NammIsADev/glautude">
     <img src="https://img.shields.io/github/stars/NammIsADev/glautude.svg" alt="GitHub Stars">
   </a>
+  <a href="https://github.com/NammIsADev/glautude/releases/1.0">
+    <img src="https://img.shields.io/github/downloads/NammIsADev/glautude/1.0/total.svg" alt="Downloads">
+  </a>
 </div>
 
 
