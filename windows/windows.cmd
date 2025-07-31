@@ -1,7 +1,7 @@
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
 chcp 65001 >nul
-title GLAUTUDE-Windows-1.0
+title GLAUTUDE-Windows-1.1
 
 SET "SCRIPT_PATH=%~f0"
 ECHO "%SCRIPT_PATH%" | findstr /I "%TEMP%" >nul
@@ -16,12 +16,12 @@ REM --- Configuration ---
 SET "SEARCH_RESULT_LIMIT=5"
 SET "BIN_DIR=%~dp0bin"
 SET "YTDLP_EXE=%BIN_DIR%\yt-dlp.exe"
-SET "CONPL_EXE=%BIN_DIR%\conpl.exe"
+SET "MPV_URL=https://github.com/zhongfly/mpv-winbuild/releases/download/2025-07-30-a6f3236/mpv-x86_64-20250730-git-a6f3236.7z"
+SET "MPV_ARCHIVE=%BIN_DIR%\mpv.7z"
+SET "MPV_EXE=%BIN_DIR%\mpv.com"
 SET "SEVENZ_EXE=%BIN_DIR%\7z.exe"
 SET "YTDLP_ZIP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_win.zip"
 SET "YTDLP_ZIP_PATH=%BIN_DIR%\yt-dlp.zip"
-SET "CONPLAYER_ZIP_URL=https://github.com/mt1006/ConPlayer/releases/download/ConPlayer-1.5.1/ConPlayer-Windows-x64-1.5.1.zip"
-SET "CONPLAYER_ZIP_PATH=%BIN_DIR%\ConPlayer.zip"
 SET "COLORTOOL_URL=https://github.com/microsoft/terminal/releases/download/1904.29002/ColorTool.zip"
 SET "COLORTOOL_ZIP=%BIN_DIR%\ColorTool.zip"
 SET "COLORTOOL_DIR=%BIN_DIR%\ColorTool"
@@ -88,18 +88,25 @@ IF ERRORLEVEL 1 (
     GOTO :SETUP_DEPENDENCIES
 )
 
-REM --- ConPlayer ---
-IF NOT EXIST "%CONPL_EXE%" (
-    ECHO [INFO] Downloading ConPlayer...
-    curl -L -o "%CONPLAYER_ZIP_PATH%" "%CONPLAYER_ZIP_URL%"
-    IF ERRORLEVEL 1 EXIT /B 1
+REM --- MPV setup ---
+IF NOT EXIST "%MPV_EXE%" (
+    ECHO [INFO] MPV not found. Downloading...
+    curl -L -o "%MPV_ARCHIVE%" "%MPV_URL%" >nul 2>&1
 
-    "%SEVENZ_EXE%" x "%CONPLAYER_ZIP_PATH%" -o"%BIN_DIR%" -y >nul
-    IF NOT EXIST "%CONPL_EXE%" (
-        ECHO [ERR] conpl.exe not found after extraction!
-        EXIT /B 1
+    IF EXIST "%MPV_ARCHIVE%" (
+        ECHO [INFO] Extracting MPV...
+        "%BIN_DIR%\7z.exe" x -y "%MPV_ARCHIVE%" -o"%BIN_DIR%" >nul 2>&1
+
+        IF EXIST "%MPV_EXE%" (
+            ECHO [OK] MPV setup complete.
+        ) ELSE (
+            ECHO [ERR] MPV setup failed — mpv.exe still missing
+            GOTO :fail
+        )
+    ) ELSE (
+        ECHO [ERR] MPV archive download failed.
+        GOTO :fail
     )
-    DEL "%CONPLAYER_ZIP_PATH%" >nul
 )
 
 REM --- ColorTool (optional but recommended) ---
@@ -164,6 +171,28 @@ IF NOT EXIST "%FFMPEG_EXE%" (
 )
 
 ECHO [WORK-DONE] Setup complete.
+:: --- update check ---
+SETLOCAL ENABLEDELAYEDEXPANSION
+SET "CUR_VER=1.1-beta"
+SET "VER_URL=https://raw.githubusercontent.com/NammIsADev/glautude/main/update/version.txt"
+
+curl -s -o "%TEMP%\latest_ver.txt" "%VER_URL%" >nul 2>&1
+IF EXIST "%TEMP%\latest_ver.txt" (
+    SET /P LATEST_VER=<"%TEMP%\latest_ver.txt"
+    IF NOT "!LATEST_VER!"=="%CUR_VER%" (
+        ECHO.
+        ECHO [UPDATE] New version available: !LATEST_VER!
+        ECHO [UPDATE] Current version: %CUR_VER%
+        ECHO [UPDATE] Visit: https://github.com/NammIsADev/glautude
+    ) ELSE (
+        ECHO [OK] You are using the latest version (%CUR_VER%)
+    )
+    DEL "%TEMP%\latest_ver.txt"
+) ELSE (
+    ECHO [ERR] Failed to check for updates.
+)
+ENDLOCAL
+
 SET "PATH=%BIN_DIR%;%FFMPEG_DIR%;%PATH%"
 CALL :LOGO
 ECHO.
@@ -191,7 +220,7 @@ ECHO ██║   ██║██║     ██╔══██║██║   █�
 ECHO ╚██████╔╝███████╗██║  ██║╚██████╔╝   ██║   ╚██████╔╝██████╔╝███████╗
 ECHO  ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚═════╝ ╚══════╝
 ECHO -------------------------------------------------------------------
-ECHO              GLAUTUDE - Powered by ConPlayer and yt-dlp
+ECHO              GLAUTUDE - Powered by mpv and yt-dlp
 ECHO -------------------------------------------------------------------
 ECHO.
 GOTO :EOF
@@ -199,7 +228,9 @@ GOTO :EOF
 :MAIN_MENU
 CALL :LOGO
 ECHO.
-ECHO Version: 1.0-windows
+echo Conhost and Command Prompt have been deprecated. Use Windows Terminal to get best experience.
+echo You can still using Command Prompt/Conhost, but you will get a poor experience.
+ECHO Version: 1.1-beta-windows
 ECHO.
 ECHO [1] Play video/audio by Youtube URL
 ECHO [2] Search YouTube Video
@@ -264,7 +295,8 @@ IF EXIST "%OUTPUT_PATH%" (
     ECHO Starting... ok.
     ECHO Rendering...
     ECHO -----------------------------------------------------
-    "%CONPL_EXE%" "%OUTPUT_PATH%" -c cstd-rgb -cp both -f -vol 1
+	ECHO This will open a new window because mpv rendering.
+    start /wait "" "%MPV_EXE%" "%OUTPUT_PATH%" --vo=tct --no-config --terminal --really-quiet
     ECHO -----------------------------------------------------
     CALL :CLEANUP_TEMP
     ECHO Done.
@@ -377,7 +409,7 @@ IF EXIST "%OUTPUT_PATH%" (
     ECHO Starting... ok.
     ECHO Rendering...
     ECHO -----------------------------------------------------
-    "%CONPL_EXE%" "%OUTPUT_PATH%" -c cstd-rgb -cp both -f -vol 1
+    start /wait "" "%MPV_EXE%" "%OUTPUT_PATH%" --vo=tct --no-config --terminal --really-quiet
     ECHO -----------------------------------------------------
     CALL :CLEANUP_TEMP
     ECHO Done.
