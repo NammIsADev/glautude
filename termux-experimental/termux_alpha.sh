@@ -164,6 +164,31 @@ function setup_dependencies() {
     return 0
 }
 
+# check for updates
+function check_for_updates() {
+    local current_version="1.1"
+    local version_url="https://raw.githubusercontent.com/NammIsADev/glautude/main/update/version.txt"
+    local release_page="https://github.com/NammIsADev/glautude/releases"
+
+    echo -e "${CYAN}[INFO] Checking for updates...${NC}"
+    local latest_version
+    latest_version=$(curl -s "$version_url" | tr -d '\r' | head -n 1)
+
+    if [ -z "$latest_version" ]; then
+        echo -e "${RED}[ERROR] Failed to check latest version.${NC}"
+        return
+    fi
+
+    if [[ "$latest_version" != "$current_version" ]]; then
+        echo -e "${YELLOW}[UPDATE AVAILABLE] your version: ${current_version}, latest: ${latest_version}${NC}"
+        echo -e "${CYAN}→ Open ${release_page} to download the latest version${NC}"
+        echo ""
+        read -r -p "Press [enter] to continue..."
+    else
+        echo -e "${GREEN}[OK] You're running the latest version (${current_version})${NC}"
+    fi
+}
+
 # Function to clean up temporary files
 function cleanup_temp() {
     echo -e "${YELLOW}[INFO] Cleaning up temporary files...${NC}"
@@ -286,213 +311,160 @@ function main_menu() {
     done
 }
 
-function search_video() {
+search_video() {
     cleanup_temp
-    echo -e "${GREEN}Done cleaning temp files.${NC}"
-    echo ""
+    echo -e "${GREEN}temporary files cleaned.${NC}\n"
 
     while true; do
-        echo -n "Enter search term for YouTube (leave blank to return to menu): "
+        echo -n "enter youtube search term (leave blank to return): "
         read -r SEARCH_QUERY
-        if [ -z "$SEARCH_QUERY" ]; then
-            return # Go back to main menu if blank
-        fi
+        [ -z "$SEARCH_QUERY" ] && return
 
-        echo -e "${CYAN}[INFO] Searching YouTube for: $SEARCH_QUERY${NC}" # Changed to CYAN
-        # Search and get N results as JSON
-        SEARCH_RESULTS=$("$YTDLP_BIN" "ytsearch${SEARCH_RESULT_LIMIT}:${SEARCH_QUERY}" --print-json | "$JQ_BIN" -r '.id + " | " + .title')
+        echo -e "${CYAN}[info] searching: \"$SEARCH_QUERY\"${NC}"
 
-        if [ -z "$SEARCH_RESULTS" ]; then
-            echo -e "${RED}[ERROR] No results found, try another search.${NC}"
+        # fetch and clean json using jq: extract id, title (escape newlines), and uploader
+        mapfile -t SEARCH_RESULTS < <(
+            "$YTDLP_BIN" "ytsearch${SEARCH_RESULT_LIMIT}:${SEARCH_QUERY}" --print-json |
+            "$JQ_BIN" -r 'select(.id and .title) | [.id, (.title | gsub("\n"; " ") | gsub("\t"; " ")), .uploader] | @tsv'
+        )
+
+        if [ "${#SEARCH_RESULTS[@]}" -eq 0 ]; then
+            echo -e "${RED}[error] no results found.${NC}"
             continue
         fi
 
-        echo -e "${YELLOW}Top $SEARCH_RESULT_LIMIT results:${NC}"
-        IFS=$'\n'; select RESULT in $SEARCH_RESULTS "Back to menu"; do
-            if [[ "$REPLY" == "$((SEARCH_RESULT_LIMIT + 1))" || "$RESULT" == "Back to menu" ]]; then
-                return
-            elif [[ -n "$RESULT" ]]; then
-                VIDEO_ID=$(echo "$RESULT" | cut -d" " -f1)
-                # Correct YouTube URL construction
+        echo -e "${YELLOW}top ${SEARCH_RESULT_LIMIT} results:${NC}"
+        for i in "${!SEARCH_RESULTS[@]}"; do
+            IFS=$'\t' read -r VID TITLE UPLOADER <<< "${SEARCH_RESULTS[$i]}"
+            printf "%2d) %s%s%s\n" "$((i+1))" "${TITLE}" "${UPLOADER:+  \e[90mby $UPLOADER\e[0m}"
+        done
+        echo -e "$((SEARCH_RESULT_LIMIT + 1))) back to menu"
+
+        while true; do
+            echo -n "choose a video [1-${SEARCH_RESULT_LIMIT}] or ${SEARCH_RESULT_LIMIT}+ to return: "
+            read -r CHOICE
+
+            if [[ "$CHOICE" =~ ^[0-9]+$ ]] && (( CHOICE >= 1 && CHOICE <= SEARCH_RESULT_LIMIT )); then
+                IFS=$'\t' read -r VIDEO_ID _ <<< "${SEARCH_RESULTS[$((CHOICE-1))]}"
                 VIDEO_URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
                 search_playback "$VIDEO_URL"
                 break
+            elif (( CHOICE == SEARCH_RESULT_LIMIT + 1 )); then
+                return
             else
-                echo "Invalid option, try again."
+                echo -e "${RED}invalid option. try again.${NC}"
             fi
         done
     done
 }
 
-# Play video by URL
-function paste_url() {
+paste_url() {
     cleanup_temp
-    echo -e "${GREEN}Done cleaning old video temp.${NC}"
-    echo ""
+    echo -e "${GREEN}Cleaned old temp.${NC}\n"
     read -r -p "Enter YouTube URL: " YOUTUBE_URL
-
-    if [ -z "$YOUTUBE_URL" ]; then
-        return
-    fi
+    [ -z "$YOUTUBE_URL" ] && return
 
     show_formats "$YOUTUBE_URL"
 
-    AUDIO_ONLY=""
     read -r -p "Play audio only? (y/N): " AUDIO_CHOICE
+    local AUDIO_ONLY=""
     [[ "$AUDIO_CHOICE" =~ ^[Yy]$ ]] && AUDIO_ONLY="yes"
 
-    VIDEO_QUALITY=""
+    local VIDEO_QUALITY=""
     local MPV_OPTS_ARRAY=()
+    [ -z "$AUDIO_ONLY" ] && {
+        read -r -p "Enter format code (blank = best): " VIDEO_QUALITY
+        MPV_OPTS_ARRAY=($(get_mpv_opts))
+    }
 
-    # Automatically set terminal video options if not playing audio only
-    if [ -z "$AUDIO_ONLY" ]; then
-        read -r -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
+    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp_play"
+    rm -f "$OUTPUT_PATH"* 2>/dev/null
 
-        # Check for global override first (e.g., MPV_VO=caca)
-        if [ -n "$GLOBAL_MPV_VO_OVERRIDE" ]; then
-            MPV_OPTS_ARRAY=("--vo=$GLOBAL_MPV_VO_OVERRIDE" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-            echo -e "${CYAN}[INFO] Forced playback mode: --vo=$GLOBAL_MPV_VO_OVERRIDE (via MPV_VO environment variable).${NC}" # Changed to CYAN
-            if [ "$GLOBAL_MPV_VO_OVERRIDE" == "caca" ]; then
-                echo -e "${YELLOW}Note: Expect significant resolution reduction and performance trade-offs with caca.${NC}"
-            elif [ "$GLOBAL_MPV_VO_OVERRIDE" == "tct" ]; then
-                echo -e "${YELLOW}Note: Best results with true-color terminal. Performance may still be limited.${NC}"
-            fi
-        else # No override, proceed with automatic detection (TCT then Caca)
-            echo -e "${CYAN}[INFO] Attempting terminal video playback (TCT/Caca fallback)...${NC}" # Changed to CYAN
-            # Check if mpv supports tct video output
-            if "$MPV_BIN" --vo=help 2>&1 | grep -q "tct"; then
-                MPV_OPTS_ARRAY=("--vo=tct" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-                echo -e "${GREEN}[WORK-DONE] TCT support detected and enabled for mpv. Expect better color.${NC}"
-                echo -e "${YELLOW}Note: Best results with a true-color compatible terminal. Performance may still be limited.${NC}"
-            else
-                MPV_OPTS_ARRAY=("--vo=caca" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-                echo -e "${YELLOW}[WARNING] TCT support not detected for mpv. Falling back to ASCII art (caca).${NC}"
-                echo -e "${YELLOW}Note: Expect significant resolution reduction and performance trade-offs with caca.${NC}"
-            fi
-            # Provide override instruction for caca
-            echo -e "${YELLOW}    To force ASCII (caca) if TCT is not preferred, run: ${NC}${CYAN}MPV_VO=caca ./GlauTude.sh${NC}"
-            echo -e "${NC}"
-        fi
-        sleep 2 # Give user time to read the message
-    fi
-
-    # Use TMPDIR for Termux compatibility
-    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp_play.mp4"
-    rm -f "$OUTPUT_PATH" 2>/dev/null
-
-    echo -e "${CYAN}[INFO] Starting download...${NC}" # Changed to CYAN
+    echo -e "${CYAN}[INFO] Downloading...${NC}"
     if [ -n "$AUDIO_ONLY" ]; then
-        "$YTDLP_BIN" --extract-audio --audio-format mp3 -o "$OUTPUT_PATH" "$YOUTUBE_URL"
-    elif [ -n "$VIDEO_QUALITY" ]; then
-        "$YTDLP_BIN" -f "${VIDEO_QUALITY}+bestaudio[ext=m4a]" --merge-output-format mp4 -o "$OUTPUT_PATH" "$YOUTUBE_URL"
+        "$YTDLP_BIN" --extract-audio --audio-format mp3 --no-mtime -o "${OUTPUT_PATH}.%(ext)s" "$YOUTUBE_URL"
     else
-        "$YTDLP_BIN" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --merge-output-format mp4 -o "$OUTPUT_PATH" "$YOUTUBE_URL"
+        local FORMAT="${VIDEO_QUALITY:+${VIDEO_QUALITY}+}bestaudio[ext=m4a]"
+        "$YTDLP_BIN" -f "${FORMAT:-bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]}" \
+            --merge-output-format mp4 --no-mtime -o "${OUTPUT_PATH}.mp4" "$YOUTUBE_URL"
     fi
 
-local FILE_TO_PLAY="$OUTPUT_PATH" # Default to the video path
-
-    # If audio-only, the actual file to play will have .mp3 extension
-    if [ -n "$AUDIO_ONLY" ]; then
-        FILE_TO_PLAY="${OUTPUT_PATH}.mp3"
-    fi
-
+    local FILE_TO_PLAY="${AUDIO_ONLY:+${OUTPUT_PATH}.mp3}"
+    FILE_TO_PLAY="${FILE_TO_PLAY:-${OUTPUT_PATH}.mp4}"
+    
     if [ -f "$FILE_TO_PLAY" ]; then
         clear
-        echo -e "${GREEN}Starting playback...${NC}"
-        echo -e "-----------------------------------------------------"
-        "$MPV_BIN" "${MPV_OPTS_ARRAY[@]}" "$FILE_TO_PLAY" # Play the correct file
-        echo -e "-----------------------------------------------------"
-        cleanup_temp
-        echo -e "${GREEN}Done.${NC}"
-        read -r -p "Press Enter to continue..."
+        echo -e "${GREEN}Playing...${NC}\n--------------------------"
+        "$MPV_BIN" "${MPV_OPTS_ARRAY[@]}" "$FILE_TO_PLAY"
+        echo -e "--------------------------\n${GREEN}Done.${NC}"
     else
-        echo -e "${RED}[ERR] Download or playback failed! The file '$FILE_TO_PLAY' was not found.${NC}" # More specific error message
-        cleanup_temp
-        read -r -p "Press Enter to continue..."
+        echo -e "${RED}[ERROR] Playback failed: file not found.${NC}"
     fi
-} # Correct closing brace for paste_url function
+    cleanup_temp
+    read -r -p "Press Enter to continue..."
+}
 
-# Search YouTube video
-function search_playback() {
+search_playback() {
     local url_to_play="$1"
-
     show_formats "$url_to_play"
 
-    AUDIO_ONLY=""
     read -r -p "Play audio only? (y/N): " AUDIO_CHOICE
+    local AUDIO_ONLY=""
     [[ "$AUDIO_CHOICE" =~ ^[Yy]$ ]] && AUDIO_ONLY="yes"
 
-    VIDEO_QUALITY=""
+    local VIDEO_QUALITY=""
     local MPV_OPTS_ARRAY=()
+    [ -z "$AUDIO_ONLY" ] && {
+        read -r -p "Enter format code (blank = best): " VIDEO_QUALITY
+        MPV_OPTS_ARRAY=($(get_mpv_opts))
+    }
 
-    # Automatically set terminal video options if not playing audio only
-    if [ -z "$AUDIO_ONLY" ]; then
-        read -r -p "Enter format code for desired quality (e.g., 137 for 1080p, leave blank for best quality): " VIDEO_QUALITY
+    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp_search"
+    rm -f "$OUTPUT_PATH"* 2>/dev/null
 
-        # Check for global override first (e.g., MPV_VO=caca)
-        if [ -n "$GLOBAL_MPV_VO_OVERRIDE" ]; then
-            MPV_OPTS_ARRAY=("--vo=$GLOBAL_MPV_VO_OVERRIDE" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-            echo -e "${CYAN}[INFO] Forced playback mode: --vo=$GLOBAL_MPV_VO_OVERRIDE (via MPV_VO environment variable).${NC}" # Changed to CYAN
-            if [ "$GLOBAL_MPV_VO_OVERRIDE" == "caca" ]; then
-                echo -e "${YELLOW}Note: Expect significant resolution reduction and performance trade-offs with caca.${NC}"
-            elif [ "$GLOBAL_MPV_VO_OVERRIDE" == "tct" ]; then
-                echo -e "${YELLOW}Note: Best results with true-color terminal. Performance may still be limited.${NC}"
-            fi
-        else # No override, proceed with automatic detection (TCT then Caca)
-            echo -e "${CYAN}[INFO] Attempting terminal video playback (TCT/Caca fallback)...${NC}" # Changed to CYAN
-            # Check if mpv supports tct video output
-            if "$MPV_BIN" --vo=help 2>&1 | grep -q "tct"; then
-                MPV_OPTS_ARRAY=("--vo=tct" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-                echo -e "${GREEN}[WORK-DONE] TCT support detected and enabled for mpv. Expect better color.${NC}"
-                echo -e "${YELLOW}Note: Best results with a true-color compatible terminal. Performance may still be limited.${NC}"
-            else
-                MPV_OPTS_ARRAY=("--vo=caca" "--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=auto")
-                echo -e "${YELLOW}[WARNING] TCT support not detected for mpv. Falling back to ASCII art (caca).${NC}"
-                echo -e "${YELLOW}Note: Expect significant resolution reduction and performance trade-offs with caca.${NC}"
-            fi
-            # Provide override instruction for caca
-            echo -e "${YELLOW}    To force ASCII (caca) if TCT is not preferred, run: ${NC}${CYAN}MPV_VO=caca ./GlauTude.sh${NC}"
-            echo -e "${NC}"
-        fi
-        sleep 2 # Give user time to read the message
-    fi
-
-    # Use TMPDIR for Termux compatibility
-    local OUTPUT_PATH="${TMPDIR:-/tmp}/yt_temp.mp4" # Different temp file for search_playback
-    rm -f "$OUTPUT_PATH" 2>/dev/null
-
-    echo -e "${CYAN}[INFO] Starting download...${NC}" # Changed to CYAN
+    echo -e "${CYAN}[INFO] Downloading...${NC}"
     if [ -n "$AUDIO_ONLY" ]; then
-        "$YTDLP_BIN" --extract-audio --audio-format mp3 -o "$OUTPUT_PATH" "$url_to_play"
-    elif [ -n "$VIDEO_QUALITY" ]; then
-        "$YTDLP_BIN" -f "${VIDEO_QUALITY}+bestaudio[ext=m4a]" --merge-output-format mp4 -o "$OUTPUT_PATH" "$url_to_play"
+        "$YTDLP_BIN" --extract-audio --audio-format mp3 --no-mtime -o "${OUTPUT_PATH}.%(ext)s" "$url_to_play"
     else
-        "$YTDLP_BIN" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --merge-output-format mp4 -o "$OUTPUT_PATH" "$url_to_play"
+        local FORMAT="${VIDEO_QUALITY:+${VIDEO_QUALITY}+}bestaudio[ext=m4a]"
+        "$YTDLP_BIN" -f "${FORMAT:-bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]}" \
+            --merge-output-format mp4 --no-mtime -o "${OUTPUT_PATH}.mp4" "$url_to_play"
     fi
 
-    local FILE_TO_PLAY="$OUTPUT_PATH" # Default to the video path
-
-    # If audio-only, the actual file to play will have .mp3 extension
-    if [ -n "$AUDIO_ONLY" ]; then
-        FILE_TO_PLAY="${OUTPUT_PATH}.mp3"
-    fi
+    local FILE_TO_PLAY="${AUDIO_ONLY:+${OUTPUT_PATH}.mp3}"
+    FILE_TO_PLAY="${FILE_TO_PLAY:-${OUTPUT_PATH}.mp4}"
 
     if [ -f "$FILE_TO_PLAY" ]; then
         clear
-        echo -e "${GREEN}Starting playback...${NC}"
-        echo -e "-----------------------------------------------------"
-        "$MPV_BIN" "${MPV_OPTS_ARRAY[@]}" "$FILE_TO_PLAY" # Play the correct file
-        echo -e "-----------------------------------------------------"
-        cleanup_temp
-        echo -e "${GREEN}Done.${NC}"
-        read -r -p "Press Enter to continue..."
+        echo -e "${GREEN}Playing...${NC}\n--------------------------"
+        "$MPV_BIN" "${MPV_OPTS_ARRAY[@]}" "$FILE_TO_PLAY"
+        echo -e "--------------------------\n${GREEN}Done.${NC}"
     else
-        echo -e "${RED}[ERR] Download or playback failed! The file '$FILE_TO_PLAY' was not found.${NC}" # More specific error message
-        cleanup_temp
-        read -r -p "Press Enter to continue..."
+        echo -e "${RED}[ERROR] Playback failed: file not found.${NC}"
     fi
-} # This closing brace is already there for search_playback
+    cleanup_temp
+    read -r -p "Press Enter to continue..."
+}
+
+get_mpv_opts() {
+    local opts=()
+    if [ -n "$GLOBAL_MPV_VO_OVERRIDE" ]; then
+        opts+=("--vo=$GLOBAL_MPV_VO_OVERRIDE")
+        echo -e "${CYAN}[INFO] Using MPV_VO override: $GLOBAL_MPV_VO_OVERRIDE${NC}"
+    elif "$MPV_BIN" --vo=help 2>&1 | grep -q "tct"; then
+        opts+=("--vo=tct")
+        echo -e "${GREEN}[INFO] TCT support enabled${NC}"
+    else
+        opts+=("--vo=caca")
+        echo -e "${YELLOW}[INFO] Falling back to ASCII (caca)${NC}"
+    fi
+    opts+=("--no-osd-bar" "--osd-level=0" "--quiet" "--no-config" "--profile=fast" "--hwdec=mediacodec")
+    echo "${opts[@]}"
+}
+
 
 # --- Main Program Flow ---
 setup_dependencies
+check_for_updates
 main_menu
+
