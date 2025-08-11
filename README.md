@@ -1,3 +1,6 @@
+> [!WARNING]
+> This project has been archived and is no longer being developed. The code is available for anyone who wishes to fork and continue its development.
+
 <h1 align="center" style="margin-top: 0px;">GlauTude</h1>
 
 <p align="center">
